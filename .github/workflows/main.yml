@@ -13,8 +13,8 @@ RDP + Tailscale + RustDesk + (Optional) Chrome Remote Desktop (A) #6
 All jobs
 Run details
 Workflow file for this run
-.github/workflows/rdp-tailscale-rustdesk-A.yml at 2bae8ae
-name: RDP + Tailscale + RustDesk + (Optional) Chrome Remote Desktop (A)
+.github/workflows/main.yml at 2bae8ae
+name: RDP
 
 on:
   workflow_dispatch:
