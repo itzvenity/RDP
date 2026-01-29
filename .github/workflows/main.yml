@@ -1,0 +1,65 @@
+name: RDP Skyro Runner
+
+on:
+  workflow_dispatch:
+
+jobs:
+  secure-rdp:
+    runs-on: windows-latest
+    timeout-minutes: 3600 # Maksimal 6 jam (360 menit sebenarnya, tapi 3600 biar aman)
+
+    steps:
+      - name: Configure Core RDP Settings
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
+          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
+          Restart-Service -Name TermService -Force
+
+      - name: Create RDP User with Secure Password
+        run: |
+          $charSet = @{ Upper = [char[]](65..90); Lower = [char[]](97..122); Number = [char[]](48..57); Special = [char[]](33..47) }
+          $password = -join (($charSet.Upper | Get-Random -Count 4) + ($charSet.Lower | Get-Random -Count 4) + ($charSet.Number | Get-Random -Count 4) + ($charSet.Special | Get-Random -Count 4) | Sort-Object { Get-Random })
+          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+          New-LocalUser -Name "Skyro" -Password $securePass -AccountNeverExpires
+          Add-LocalGroupMember -Group "Administrators" -Member "Skyro"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Skyro"
+          echo "RDP_PASS=$password" >> $env:GITHUB_ENV
+
+      - name: Install Tailscale
+        run: |
+          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
+          $installerPath = "$env:TEMP\tailscale.msi"
+          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
+          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
+
+      - name: Establish Tailscale Connection
+        run: |
+          $authKey = "${{ secrets.TAILSCALE_AUTH_KEY }}"
+          if ($authKey) {
+              Write-Host "Key ditemukan, login otomatis..."
+              & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=$authKey --hostname=skyro-rdp-${{ github.run_id }}
+          } else {
+              Write-Host "Key tidak ada, silakan klik link login di bawah ini:"
+              & "$env:ProgramFiles\Tailscale\tailscale.exe" up --hostname=skyro-rdp-${{ github.run_id }}
+          }
+          
+          # Ambil IP Tailscale
+          $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
+
+      - name: Maintain Connection (6 Hours)
+        run: |
+          Write-Host "`n==============================="
+          Write-Host "IP ADDRESS : $env:TAILSCALE_IP"
+          Write-Host "USERNAME   : Skyro"
+          Write-Host "PASSWORD   : $env:RDP_PASS"
+          Write-Host "===============================`n"
+          Write-Host "Runner akan aktif selama 6 jam..."
+          
+          $endTime = (Get-Date).AddHours(6)
+          while ((Get-Date) -lt $endTime) {
+              Write-Host "[$(Get-Date)] Skyro RDP Masih Berjalan..."
+              Start-Sleep -Seconds 300
+          }
+          
