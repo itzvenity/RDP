@@ -15,24 +15,29 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
           Restart-Service -Name TermService -Force
-
-      - name: Create RDP User with Secure Password
+          
+      - name: Create RDP User with Custom Password
         run: |
-          $charSet = @{ Upper = [char[]](65..90); Lower = [char[]](97..122); Number = [char[]](48..57); Special = [char[]](33..47) }
-          $password = -join (($charSet.Upper | Get-Random -Count 4) + ($charSet.Lower | Get-Random -Count 4) + ($charSet.Number | Get-Random -Count 4) + ($charSet.Special | Get-Random -Count 4) | Sort-Object { Get-Random })
+          # AMAN: Menggunakan GitHub Secrets (Sangat disarankan)
+          $password = "${{ secrets.RDP_PASSWORD }}"
+          
+          # TIDAK AMAN: Kalau repo lu private dan lu males pake Secrets, 
+          # hapus baris di atas dan un-comment baris di bawah ini, lalu isi password lu:
+          # $password = "PasswordRahasiaGw123!"
+          
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
           New-LocalUser -Name "Skyro" -Password $securePass -AccountNeverExpires
           Add-LocalGroupMember -Group "Administrators" -Member "Skyro"
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Skyro"
-          echo "RDP_PASS=$password" >> $env:GITHUB_ENV
-
+          echo "RDP_PASS=***HIDDEN***" >> $env:GITHUB_ENV
+          
       - name: Install Tailscale
         run: |
           $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
           $installerPath = "$env:TEMP\tailscale.msi"
           Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
           Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
-
+          
       - name: Establish Tailscale Connection
         run: |
           $authKey = "${{ secrets.TAILSCALE_AUTH_KEY }}"
@@ -47,13 +52,13 @@ jobs:
           # Ambil IP Tailscale
           $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
           echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
-
+          
       - name: Maintain Connection (6 Hours)
         run: |
           Write-Host "`n==============================="
           Write-Host "IP ADDRESS : $env:TAILSCALE_IP"
           Write-Host "USERNAME   : Skyro"
-          Write-Host "PASSWORD   : $env:RDP_PASS"
+          Write-Host "PASSWORD   : (Sudah di-set pakai password lu sendiri)"
           Write-Host "===============================`n"
           Write-Host "Runner akan aktif selama 6 jam..."
           
